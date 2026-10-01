@@ -1,0 +1,10 @@
+:root {
+  color-scheme: dark;
+  --bg: #101419;
+  --surface: #171d24;
+  --border: #2b343f;
+  --text: #edf2f7;
+  --muted: #97a4b5;
+  --accent: #5ee0c0;
+  --radius: 8px;
+}

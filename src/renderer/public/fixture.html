@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'none'"
+    />
+    <title>ローカル検証</title>
+    <link rel="stylesheet" href="./fixture.css" />
+  </head>
+  <body>
+    <main data-monitor-fixture>
+      <div class="label">LOCAL TEST SIGNAL</div>
+      <time id="clock"></time>
+      <p>ローカル検証 · 秒ごとに更新する時計と動く図形</p>
+      <div class="track"><div id="marker"></div></div>
+      <small id="sequence"></small>
+    </main>
+    <footer>
+      <button id="freeze-clock">時計を止める</button><button id="freeze-scene">図形を止める</button
+      ><button id="black">黒画面</button><button id="restore">戻す</button>
+    </footer>
+    <script src="./fixture.js"></script>
+  </body>
+</html>

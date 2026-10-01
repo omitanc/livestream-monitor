@@ -1,0 +1,144 @@
+import { useState } from 'react';
+import { Volume2 } from 'lucide-react';
+import type { Command, Snapshot } from '../../shared/types';
+import { formatTime } from '../api';
+
+const statusLabels = {
+  idle: '未開始',
+  waiting: '取得待ち',
+  capturing: '取得中',
+  unavailable: '観測不能',
+  stopped: '停止中',
+};
+export function Inspector({ state, run }: { state: Snapshot; run: (cmd: Command) => void }) {
+  const [minutes, setMinutes] = useState(15);
+  const [sounding, setSounding] = useState(false);
+  async function alarm() {
+    if (sounding) return;
+    setSounding(true);
+    const context = new AudioContext();
+    try {
+      await context.resume();
+      for (let i = 0; i < 3; i++) {
+        const oscillator = context.createOscillator();
+        const gain = context.createGain();
+        oscillator.connect(gain);
+        gain.connect(context.destination);
+        oscillator.frequency.value = 880;
+        const start = context.currentTime + i * 0.35;
+        gain.gain.setValueAtTime(0, start);
+        gain.gain.linearRampToValueAtTime(0.12, start + 0.015);
+        gain.gain.linearRampToValueAtTime(0, start + 0.2);
+        oscillator.start(start);
+        oscillator.stop(start + 0.22);
+      }
+      setTimeout(() => {
+        void context.close();
+        setSounding(false);
+      }, 1200);
+    } catch {
+      await context.close();
+      setSounding(false);
+    }
+  }
+  const player = state.player;
+  const playerLabel =
+    player?.playerError || player?.errorCode
+      ? '再生エラー'
+      : !player?.found
+        ? '—'
+        : player.ended
+          ? '再生終了'
+          : player.paused
+            ? '一時停止'
+            : player.readyState < 3
+              ? '読み込み待ち'
+              : state.source === 'fixture'
+                ? '検証画面'
+                : '再生中';
+  return (
+    <aside className="inspector">
+      <section className="panel">
+        <h2>取得状態</h2>
+        <div className={`capture-state ${state.status}`}>
+          <i />
+          {statusLabels[state.status]}
+        </div>
+        <dl className="readings">
+          <div>
+            <dt>最新の取得</dt>
+            <dd>{formatTime(state.lastCaptureAt)}</dd>
+          </div>
+          <div>
+            <dt>取得回数</dt>
+            <dd>{state.count.toLocaleString()}</dd>
+          </div>
+          <div>
+            <dt>映像の変化</dt>
+            <dd>{state.change === null ? '—' : `${state.change}%`}</dd>
+          </div>
+          <div>
+            <dt>プレーヤー</dt>
+            <dd>{playerLabel}</dd>
+          </div>
+        </dl>
+        <p className="hint">
+          取得成功は、配信の正常判定ではありません。変化率は時計を含む映像全体の参考値です。
+        </p>
+      </section>
+      <section className="panel">
+        <h2>最新の取得画像</h2>
+        <div className="thumbnail">
+          {state.thumbnail ? (
+            <img src={state.thumbnail} alt="最後に取得した映像" />
+          ) : (
+            <span>未取得</span>
+          )}
+        </div>
+      </section>
+      <section className="panel reload-panel">
+        <div className="panel-heading">
+          <h2>自動リロード</h2>
+          <button
+            className={`switch ${state.reloadMinutes ? 'on' : ''}`}
+            role="switch"
+            aria-label="自動リロード"
+            aria-checked={!!state.reloadMinutes}
+            onClick={() =>
+              run({ type: 'reload-interval', minutes: state.reloadMinutes ? 0 : minutes })
+            }
+          >
+            <span />
+          </button>
+        </div>
+        <label className="interval">
+          間隔（分）
+          <span>
+            <input
+              aria-label="リロード間隔（分）"
+              type="number"
+              min="1"
+              max="180"
+              value={minutes}
+              onChange={(e) => {
+                const n = Number(e.target.value);
+                if (Number.isInteger(n) && n >= 1 && n <= 180) {
+                  setMinutes(n);
+                  if (state.reloadMinutes) run({ type: 'reload-interval', minutes: n });
+                }
+              }}
+            />
+            分
+          </span>
+        </label>
+        {state.nextReloadAt && (
+          <p className="hint">次回 {formatTime(state.nextReloadAt)} · 取得中のみ</p>
+        )}
+      </section>
+      <button className="alarm-button" onClick={() => void alarm()} disabled={sounding}>
+        <Volume2 size={17} />
+        {sounding ? 'テスト音を再生中…' : '警報音を試す'}
+      </button>
+    </aside>
+  );
+}
