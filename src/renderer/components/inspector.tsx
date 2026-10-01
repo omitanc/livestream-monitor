@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Volume2 } from 'lucide-react';
 import type { Command, Snapshot } from '../../shared/types';
+import { HealthPanel } from './health-panel';
 import { formatTime } from '../api';
 
 const statusLabels = {
@@ -10,37 +11,16 @@ const statusLabels = {
   unavailable: '観測不能',
   stopped: '停止中',
 };
-export function Inspector({ state, run }: { state: Snapshot; run: (cmd: Command) => void }) {
+export function Inspector({
+  state,
+  run,
+  settings,
+}: {
+  state: Snapshot;
+  run: (cmd: Command) => void;
+  settings: () => void;
+}) {
   const [minutes, setMinutes] = useState(15);
-  const [sounding, setSounding] = useState(false);
-  async function alarm() {
-    if (sounding) return;
-    setSounding(true);
-    const context = new AudioContext();
-    try {
-      await context.resume();
-      for (let i = 0; i < 3; i++) {
-        const oscillator = context.createOscillator();
-        const gain = context.createGain();
-        oscillator.connect(gain);
-        gain.connect(context.destination);
-        oscillator.frequency.value = 880;
-        const start = context.currentTime + i * 0.35;
-        gain.gain.setValueAtTime(0, start);
-        gain.gain.linearRampToValueAtTime(0.12, start + 0.015);
-        gain.gain.linearRampToValueAtTime(0, start + 0.2);
-        oscillator.start(start);
-        oscillator.stop(start + 0.22);
-      }
-      setTimeout(() => {
-        void context.close();
-        setSounding(false);
-      }, 1200);
-    } catch {
-      await context.close();
-      setSounding(false);
-    }
-  }
   const player = state.player;
   const playerLabel =
     player?.playerError || player?.errorCode
@@ -58,6 +38,7 @@ export function Inspector({ state, run }: { state: Snapshot; run: (cmd: Command)
                 : '再生中';
   return (
     <aside className="inspector">
+      <HealthPanel state={state} run={run} settings={settings} />
       <section className="panel">
         <h2>取得状態</h2>
         <div className={`capture-state ${state.status}`}>
@@ -83,7 +64,7 @@ export function Inspector({ state, run }: { state: Snapshot; run: (cmd: Command)
           </div>
         </dl>
         <p className="hint">
-          取得成功は、配信の正常判定ではありません。変化率は時計を含む映像全体の参考値です。
+          変化率は映像全体の参考値です。死活監視は指定した判定範囲と条件を使用します。
         </p>
       </section>
       <section className="panel">
@@ -135,9 +116,9 @@ export function Inspector({ state, run }: { state: Snapshot; run: (cmd: Command)
           <p className="hint">次回 {formatTime(state.nextReloadAt)} · 取得中のみ</p>
         )}
       </section>
-      <button className="alarm-button" onClick={() => void alarm()} disabled={sounding}>
+      <button className="alarm-button" onClick={() => run({ type: 'test-sound' })}>
         <Volume2 size={17} />
-        {sounding ? 'テスト音を再生中…' : '警報音を試す'}
+        警報音を試す
       </button>
     </aside>
   );

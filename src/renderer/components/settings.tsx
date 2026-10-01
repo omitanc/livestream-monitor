@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { X, FlaskConical, Download, RefreshCw, Trash2 } from 'lucide-react';
 import type { Command, Snapshot, UpdateState } from '../../shared/types';
+import { MonitorSettings } from './monitor-settings';
 import { api, megabytes } from '../api';
 
 export function Settings({
@@ -11,7 +12,7 @@ export function Settings({
 }: {
   state: Snapshot;
   opening: boolean;
-  run: (cmd: Command) => void;
+  run: (cmd: Command) => Promise<boolean>;
   close: () => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -40,6 +41,13 @@ export function Settings({
           <X size={20} />
         </button>
       </div>
+      <MonitorSettings
+        settings={state.settings}
+        run={run}
+        notificationStatus={state.notificationStatus}
+        soundError={state.soundError}
+        thumbnail={state.thumbnail}
+      />
       <section className="settings-section">
         <h3>動作の検証</h3>
         <button
@@ -111,7 +119,7 @@ export function Settings({
           </button>
         )}
       </section>
-      <p className="hint">異常判定・スマホ通知・監視PCの外部死活確認は、今後の実装対象です。</p>
+      <p className="hint">スマホ通知・監視PC自体の外部死活確認は未対応です。</p>
     </dialog>
   );
 }

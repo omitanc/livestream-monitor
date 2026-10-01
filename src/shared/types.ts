@@ -1,3 +1,5 @@
+import type { MonitorSettings } from './health-settings';
+import type { HealthState } from './health-detector';
 export type Source = 'none' | 'youtube' | 'fixture';
 export type CaptureStatus = 'idle' | 'waiting' | 'capturing' | 'unavailable' | 'stopped';
 export interface Bounds {
@@ -26,6 +28,11 @@ export interface LogEntry {
   level: 'info' | 'warning';
 }
 export interface Snapshot {
+  settings: MonitorSettings;
+  health: HealthState;
+  notificationStatus: string;
+  soundError: string | null;
+  soundTestId: number;
   source: Source;
   pageReady: boolean;
   muted: boolean;
@@ -61,6 +68,11 @@ export interface UpdateState {
 export type Command =
   | { type: 'open'; url: string }
   | { type: 'fixture' | 'start' | 'stop' | 'reload' | 'live' | 'clear-cache' }
+  | { type: 'monitor-settings'; settings: MonitorSettings }
+  | {
+      type:
+        'alert-acknowledge' | 'test-notification' | 'test-sound' | 'sound-failed' | 'sound-ready';
+    }
   | { type: 'mute'; muted: boolean }
   | { type: 'reload-interval'; minutes: number }
   | { type: 'bounds'; bounds: Bounds | null }

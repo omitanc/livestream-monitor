@@ -3,6 +3,8 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseCommand } from '../shared/policy';
 import { Monitor } from './monitor';
+import { SettingsStore } from './settings-store';
+import { DesktopNotifier } from './desktop-notifier';
 import { Updates } from './updates';
 
 // Chromium HTTP disk cache hint, not a quota for cookies/GPU cache/all app data.
@@ -31,8 +33,19 @@ function createWindow() {
   }));
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.on('will-navigate', (event) => event.preventDefault());
-  monitor = new Monitor(window);
+  const store = new SettingsStore(app.getPath('userData'));
+  const saved = store.load();
+  const notifier = new DesktopNotifier(window, (message, failed) =>
+    instance.notificationResult(message, failed),
+  );
+  monitor = new Monitor(
+    window,
+    saved.settings,
+    (settings) => store.save(settings),
+    (title, body) => notifier.send(title, body),
+  );
   const instance = monitor;
+  if (saved.warning) instance.log(saved.warning, 'warning');
   const updates = new Updates(window, () => instance.state.observing);
   const trusted = (event: Electron.IpcMainInvokeEvent) => {
     if (
@@ -77,6 +90,22 @@ function createWindow() {
         case 'mute':
           await instance.setMuted(command.muted);
           break;
+        case 'monitor-settings':
+          instance.setSettings(command.settings);
+          break;
+        case 'alert-acknowledge':
+          instance.acknowledge();
+          break;
+        case 'test-notification':
+          instance.testNotification();
+          break;
+        case 'test-sound':
+          instance.testSound();
+          break;
+        case 'sound-failed':
+        case 'sound-ready':
+          instance.soundResult(command.type === 'sound-failed');
+          break;
         case 'reload-interval':
           instance.setReload(command.minutes);
           break;
@@ -105,7 +134,10 @@ function createWindow() {
       };
     }
   });
-  window.on('close', () => instance.dispose());
+  window.on('close', () => {
+    notifier.dispose();
+    instance.dispose();
+  });
   window.on('closed', () => {
     mainWindow = null;
     monitor = undefined;
@@ -114,6 +146,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  if (process.platform === 'win32') app.setAppUserModelId('net.omitanc.livestream-monitor');
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([
       ...(process.platform === 'darwin' ? [{ role: 'appMenu' as const }] : []),

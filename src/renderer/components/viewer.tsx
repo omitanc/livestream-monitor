@@ -22,6 +22,7 @@ export function Viewer({
 }) {
   const host = useRef<HTMLDivElement>(null);
   useEffect(() => {
+    if (!hidden && state.source !== 'none') host.current?.scrollIntoView({ block: 'nearest' });
     const sendBounds = () => {
       const rect = host.current?.getBoundingClientRect();
       void api?.command({

@@ -1,3 +1,5 @@
+import { defaultSettings } from '../shared/health-settings';
+import { idleHealth } from '../shared/health-detector';
 import type { MonitorApi, Snapshot } from '../shared/types';
 declare global {
   interface Window {
@@ -5,6 +7,11 @@ declare global {
   }
 }
 export const initialState: Snapshot = {
+  settings: defaultSettings(),
+  health: idleHealth(),
+  notificationStatus: '未テスト',
+  soundError: null,
+  soundTestId: 0,
   source: 'none',
   pageReady: false,
   muted: false,

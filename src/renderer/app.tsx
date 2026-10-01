@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { Activity, ArrowUpRight, Settings2, X } from 'lucide-react';
 import type { Command } from '../shared/types';
 import { api, formatTime, initialState, megabytes } from './api';
+import { useAlarm } from './use-alarm';
+import { prepareAlarmAudio } from './alarm-audio';
 import { Viewer } from './components/viewer';
 import { Inspector } from './components/inspector';
 import { Settings } from './components/settings';
@@ -12,6 +14,7 @@ export function App() {
   const [error, setError] = useState('');
   const [settings, setSettings] = useState(false);
   const [opening, setOpening] = useState(false);
+  useAlarm(state);
   useEffect(() => {
     if (!api) return;
     const remove = api.subscribe(setState);
@@ -21,7 +24,18 @@ export function App() {
   async function run(command: Command) {
     if (!api) {
       setError('ブラウザ表示はGUIプレビューです。映像取得はElectronアプリで利用できます。');
-      return;
+      return false;
+    }
+    if (
+      command.type === 'test-sound' ||
+      (command.type === 'start' && state.settings.notifications.sound) ||
+      (command.type === 'monitor-settings' && command.settings.notifications.sound)
+    ) {
+      try {
+        await prepareAlarmAudio();
+      } catch {
+        void api.command({ type: 'sound-failed' });
+      }
     }
     const openingSource = command.type === 'open' || command.type === 'fixture';
     if (openingSource) setOpening(true);
@@ -29,8 +43,10 @@ export function App() {
     try {
       const result = await api.command(command);
       if (!result.ok) setError(result.error ?? '操作できませんでした。');
+      return result.ok;
     } catch {
       setError('アプリとの通信に失敗しました。');
+      return false;
     } finally {
       if (openingSource) setOpening(false);
     }
@@ -105,11 +121,11 @@ export function App() {
               </ol>
             </section>
           </div>
-          <Inspector state={state} run={run} />
+          <Inspector state={state} run={run} settings={() => setSettings(true)} />
         </div>
       </main>
       <footer className="status-bar">
-        <span>プレビュー版 · 異常判定・外部通知は未実装</span>
+        <span>開発プレビュー · 監視PCの外部死活確認は未対応</span>
         <div>
           <span>
             キャッシュ <b>{megabytes(state.cacheBytes)} MB</b>

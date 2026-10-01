@@ -1,3 +1,4 @@
+import { parseSettings } from './health-settings';
 import type { Bounds, Command } from './types';
 
 export function youtubeUrl(input: string): string {
@@ -60,6 +61,8 @@ export function parseCommand(value: unknown): Command {
   const cmd = value as Command;
   if (cmd.type === 'open' && typeof cmd.url === 'string' && cmd.url.length <= 2048)
     return { type: 'open', url: youtubeUrl(cmd.url) };
+  if (cmd.type === 'monitor-settings')
+    return { type: 'monitor-settings', settings: parseSettings(cmd.settings) };
   if (cmd.type === 'mute' && typeof cmd.muted === 'boolean') return cmd;
   if (cmd.type === 'bounds' && (cmd.bounds === null || validBounds(cmd.bounds))) return cmd;
   if (
@@ -70,6 +73,11 @@ export function parseCommand(value: unknown): Command {
     return cmd;
   if (
     [
+      'alert-acknowledge',
+      'test-notification',
+      'test-sound',
+      'sound-failed',
+      'sound-ready',
       'fixture',
       'start',
       'stop',

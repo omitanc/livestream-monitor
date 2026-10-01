@@ -1,12 +1,25 @@
 import { app, BrowserWindow, WebContentsView, session, nativeImage } from 'electron';
 import { join } from 'node:path';
 import { allowedNavigation, pixelChange, validBounds } from '../shared/policy';
+import { defaultSettings, parseSettings, type MonitorSettings } from '../shared/health-settings';
+import {
+  HealthDetector,
+  describeReasons,
+  idleHealth,
+  type Observation,
+} from '../shared/health-detector';
+import { analyzeFrame, regionBitmap } from '../shared/frame-analysis';
 import { Sampler } from '../shared/sampler';
 import type { Bounds, PlayerProbe, Snapshot } from '../shared/types';
 import { frameScript, liveScript, probeScript, unmuteScript, videoOnlyCss } from './player-scripts';
 
 export class Monitor {
   state: Snapshot = {
+    settings: defaultSettings(),
+    health: idleHealth(),
+    notificationStatus: '未テスト',
+    soundError: null,
+    soundTestId: 0,
     source: 'none',
     pageReady: false,
     muted: false,
@@ -30,6 +43,9 @@ export class Monitor {
   private navigationRevision = 0;
   private probing = false;
   private bounds: Bounds | null = null;
+  private detector: HealthDetector;
+  private previousRegion: Uint8Array | null = null;
+  private previousAspect: number | null = null;
   private previous: Uint8Array | null = null;
   private generation = 0;
   private eventId = 0;
@@ -40,7 +56,14 @@ export class Monitor {
   private sampler: Sampler;
   readonly session = session.fromPartition('persist:youtube-viewer');
 
-  constructor(private window: BrowserWindow) {
+  constructor(
+    private window: BrowserWindow,
+    settings = defaultSettings(),
+    private persistSettings: (settings: MonitorSettings) => void = () => {},
+    private notify: (title: string, body: string) => void = () => {},
+  ) {
+    this.state.settings = settings;
+    this.detector = new HealthDetector(settings);
     this.session.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
     this.session.setPermissionCheckHandler(() => false);
     this.session.on('will-download', (event) => event.preventDefault());
@@ -50,6 +73,7 @@ export class Monitor {
     );
     this.metrics = setInterval(() => void this.measure(), 10000);
     this.scheduler = setInterval(() => {
+      if (this.state.observing) this.updateHealth();
       if (!this.state.observing) void this.refreshPlayer();
       if (this.deadline && performance.now() >= this.deadline) this.reload();
     }, 1000);
@@ -107,6 +131,8 @@ export class Monitor {
     this.state.player = null;
     this.state.change = null;
     this.previous = null;
+    this.previousRegion = null;
+    this.previousAspect = null;
     const view = (this.view = new WebContentsView({
       webPreferences: {
         session: this.session,
@@ -144,6 +170,8 @@ export class Monitor {
       this.state.change = null;
       this.state.player = null;
       this.previous = null;
+      this.previousRegion = null;
+      this.previousAspect = null;
       this.emit();
     });
     wc.on('did-finish-load', () => {
@@ -216,6 +244,8 @@ export class Monitor {
     this.state.observing = true;
     this.state.status = 'waiting';
     this.armReload();
+    this.detector.start(performance.now());
+    this.state.health = this.detector.state;
     this.sampler.start();
     this.log('映像取得を開始しました（約1秒間隔）。');
   }
@@ -223,11 +253,72 @@ export class Monitor {
     this.state.observing = false;
     this.generation++;
     this.sampler.stop();
+    this.detector.reset();
+    this.state.health = this.detector.state;
     this.deadline = 0;
     this.state.nextReloadAt = null;
     this.state.status = 'stopped';
     if (log) this.log('映像取得を停止しました。再生は継続します。');
   }
+  setSettings(input: MonitorSettings) {
+    const settings = parseSettings(input);
+    this.persistSettings(settings);
+    this.state.settings = settings;
+    this.previousRegion = null;
+    this.previousAspect = null;
+    this.detector.configure(settings, performance.now());
+    this.state.health = this.detector.state;
+    this.log('監視・通知設定を保存しました。取得中の判定を新しい設定で開始します。');
+  }
+  acknowledge() {
+    this.detector.acknowledge();
+    this.log('警報を確認し、この異常の警報音を停止しました。監視は継続します。');
+  }
+  testSound() {
+    this.state.soundTestId++;
+    this.emit();
+  }
+  soundResult(failed: boolean) {
+    const previouslyFailed = !!this.state.soundError;
+    this.state.soundError = failed
+      ? '警報音を再生できません。「警報音を試す」で再確認してください。'
+      : null;
+    if (failed && !previouslyFailed) this.log(this.state.soundError!, 'warning');
+    else this.emit();
+  }
+  testNotification() {
+    this.notify('LiveStream Monitor · 通知テスト', 'PCのOS通知をテストしています。');
+  }
+  notificationResult(message: string, failed: boolean) {
+    this.state.notificationStatus = message;
+    this.log(message, failed ? 'warning' : 'info');
+  }
+  private updateHealth(observation?: Observation) {
+    if (!this.state.observing) return;
+    const now = performance.now();
+    const transitions = observation
+      ? this.detector.sample(observation, now)
+      : this.detector.tick(now);
+    this.state.health = this.detector.state;
+    for (const transition of transitions) {
+      const reasons = describeReasons(transition.reasons);
+      const body =
+        transition.type === 'alert'
+          ? `異常を検出しました: ${reasons}。`
+          : `設定した監視条件の復旧を確認しました: ${reasons}。`;
+      this.log(body, transition.type === 'alert' ? 'warning' : 'info');
+      if (
+        this.state.settings.notifications.desktop &&
+        (transition.type === 'alert' || this.state.settings.notifications.recovery)
+      )
+        this.notify(
+          transition.type === 'alert' ? '配信の監視アラート' : '配信の監視条件が復旧',
+          body,
+        );
+    }
+    this.emit();
+  }
+
   setReload(minutes: number) {
     this.state.reloadMinutes = minutes;
     this.armReload();
@@ -258,6 +349,13 @@ export class Monitor {
     );
   }
   private unavailable(playerError = false) {
+    this.updateHealth({
+      available: false,
+      youtube: this.state.source === 'youtube',
+      player: this.state.player,
+      change: null,
+      blackPercent: null,
+    });
     this.state.lastCaptureAt = null;
     this.state.thumbnail = null;
     this.state.change = null;
@@ -313,6 +411,18 @@ export class Monitor {
     }
     const bitmap = image.resize({ width: 96, height: 54 }).toBitmap();
     this.state.change = pixelChange(this.previous, bitmap);
+    if (this.previousAspect !== probe.aspectRatio) this.previousRegion = null;
+    this.previousAspect = probe.aspectRatio;
+    const region = regionBitmap(bitmap, 96, 54, this.state.settings.region);
+    const analysis = analyzeFrame(this.previousRegion, region, this.state.settings.blackThreshold);
+    this.previousRegion = region;
+    this.updateHealth({
+      available: true,
+      youtube: this.state.source === 'youtube',
+      player: probe,
+      change: analysis.change,
+      blackPercent: analysis.blackPercent,
+    });
     this.previous = bitmap;
     this.state.thumbnail =
       this.state.source === 'youtube'
@@ -322,7 +432,7 @@ export class Monitor {
     this.state.count++;
     const recovering = this.state.status !== 'capturing';
     this.state.status = 'capturing';
-    if (recovering) this.log('映像の取得を確認しました。配信の正常判定は未実装です。');
+    if (recovering) this.log('映像の取得を確認しました。設定した条件で監視しています。');
     else this.emit();
   }
   async clearCache() {

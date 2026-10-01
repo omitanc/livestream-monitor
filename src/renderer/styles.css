@@ -508,3 +508,108 @@ progress {
     transition: none !important;
   }
 }
+
+.monitor-config fieldset {
+  margin: 16px 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.monitor-config legend {
+  font-size: 12px;
+  padding: 0 6px;
+  color: var(--muted);
+}
+.config-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  margin: 10px 0;
+}
+.config-check input {
+  accent-color: var(--accent);
+}
+.config-number {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  margin: 10px 0;
+}
+.config-number input {
+  width: 86px;
+  padding: 6px 8px;
+}
+.config-rule {
+  border-bottom: 1px solid var(--border);
+}
+.region-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 18px;
+}
+.config-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.config-actions span {
+  font-size: 12px;
+  color: var(--accent);
+  margin-top: 12px;
+}
+.config-error {
+  font-size: 12px;
+  color: #ffb7be;
+  margin-top: 12px;
+}
+.health-panel h2 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.health-label {
+  display: block;
+  font-size: 19px;
+  margin: 12px 0;
+}
+.health-reasons {
+  color: #f2c98a;
+  font-size: 12px;
+  margin-bottom: 12px;
+}
+.health-panel.is-alert {
+  border-color: #c93646;
+  background: #271c23;
+}
+.health-panel button.danger {
+  margin-top: 12px;
+  width: 100%;
+}
+dialog {
+  max-height: calc(100vh - 40px);
+  overflow: auto;
+}
+@media (max-width: 540px) {
+  .region-fields {
+    grid-template-columns: 1fr;
+  }
+}
+.region-preview {
+  position: relative;
+  margin-bottom: 12px;
+  background: #080c10;
+}
+.region-preview img {
+  display: block;
+  width: 100%;
+}
+.region-preview > div {
+  position: absolute;
+  border: 2px solid var(--accent);
+  background: #5ee0c01a;
+  pointer-events: none;
+}
